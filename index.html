@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Internet Explorer - yuche.tv</title> 
+    <link rel="stylesheet" href="https://unpkg.com/98.css">
+    
+    <style>
+        html, body {
+            height: 100%; margin: 0; overflow: hidden; 
+            background-color: #008080; 
+            font-family: "MS Sans Serif", "Tahoma", sans-serif;
+            user-select: none;
+        }
+
+        /* --- 主窗口 --- */
+        .main-window {
+            position: absolute;
+            width: 600px; height: 450px;
+            display: flex; flex-direction: column;
+            box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+            z-index: 100;
+            opacity: 0; /* 初始隐藏防止闪烁 */
+
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), 
+                        opacity 0.2s linear,
+                        width 0.2s ease-out, 
+                        height 0.2s ease-out, 
+                        top 0.2s ease-out, 
+                        left 0.2s ease-out;
+        }
+
+        /* 核心修复：拖拽或拉伸时彻底禁用 transition */
+        .is-dragging {
+            transition: none !important;
+        }
+
+        /* --- 窗口状态 --- */
+        .minimized {
+            transform: translateY(120vh) scale(0.3) !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        .maximized {
+            width: 100vw !important; height: 100vh !important;
+            top: 0 !important; left: 0 !important;
+            transform: none !important; 
+            opacity: 1 !important;
+            max-width: none !important; max-height: none !important;
+            border: none;
+        }
+
+        .maximized .resizer { display: none !important; }
+
+        .title-bar { cursor: default; flex-shrink: 0; position: relative; z-index: 500; }
+        .title-bar-controls button { min-width: 16px; min-height: 14px; cursor: pointer; pointer-events: auto; }
+
+        /* --- 窗口内文区域 --- */
+        .window-body {
+            flex-grow: 1; overflow-y: scroll;
+            background-color: #c0c0c0; margin: 0 !important; padding: 20px;
+            position: relative; z-index: 10;
+            box-shadow: inset -1px -1px #fff, inset 1px 1px #808080, inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+            user-select: text;
+        }
+
+        h1 { font-size: 22px; margin-top: 0; border-bottom: 1px solid #808080; padding-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        h1::before { content: url('https://win98icons.alexmeub.com/icons/png/world-3.png'); zoom: 0.6; }
+
+        /* --- 社交按钮新增样式 --- */
+        .social-row {
+            display: flex; gap: 10px; justify-content: center; margin: 15px 0;
+        }
+        .social-btn {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 8px 12px !important; min-width: 85px; height: auto !important;
+        }
+        .social-btn img {
+            width: 32px; height: 32px; margin-bottom: 4px; image-rendering: pixelated;
+        }
+        .social-btn span { font-size: 11px; }
+
+        /* --- 其他功能组件 --- */
+        .resizer { position: absolute; background: transparent; z-index: 200; }
+        .resizer-r { top: 0; right: -5px; width: 10px; height: 100%; cursor: e-resize; }
+        .resizer-l { top: 0; left: -5px; width: 10px; height: 100%; cursor: w-resize; }
+        .resizer-b { bottom: -5px; left: 0; width: 100%; height: 10px; cursor: s-resize; }
+        .resizer-rb { right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; z-index: 201; }
+        .resizer-lb { left: 0; bottom: 0; width: 18px; height: 18px; cursor: nesw-resize; z-index: 201; }
+
+        #custom-menu { 
+            position: fixed; z-index: 99999; display: none; min-width: 160px; 
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.5); 
+        }
+        .menu-list { margin: 0; padding: 2px; list-style: none; background: #c0c0c0; border: 1px solid #fff; outline: 1px solid #808080; }
+        .menu-item { padding: 4px 15px; cursor: default; font-size: 12px; color: black; display: flex; justify-content: space-between; }
+        .menu-item:hover { background-color: #000080; color: white; }
+        .menu-divider { height: 1px; background-color: #808080; border-bottom: 1px solid #ffffff; margin: 3px 1px; }
+        .menu-item.disabled { color: #808080; text-shadow: 1px 1px 0 #fff; pointer-events: none; }
+
+        .window-body::-webkit-scrollbar { width: 16px; }
+        .window-body::-webkit-scrollbar-track { background: #dfdfdf; box-shadow: inset 1px 1px #808080; }
+        .window-body::-webkit-scrollbar-thumb { background: #c0c0c0; border: 2px solid; border-color: #ffffff #0a0a0a #0a0a0a #ffffff; }
+    </style>
+</head>
+<body>
+
+    <div class="window main-window" id="myWindow">
+        <div class="title-bar" id="titleBar">
+            <div class="title-bar-text">Internet Explorer - yuche.tv</div>
+            <div class="title-bar-controls">
+                <button aria-label="Minimize" id="btnMin"></button>
+                <button aria-label="Maximize" id="btnMax"></button>
+                <button aria-label="Close" id="btnClose"></button>
+            </div>
+        </div>
+
+        <div class="window-body" id="windowBody">
+            <h1>歡迎訪問 yuche.tv</h1>
+            
+            <fieldset>
+                <legend>操作说明</legend>
+                <p>您可以随意拖动、缩放或最大化此窗口。右键点击标题栏、内容区或背景都有不同的快捷选单。</p>
+            </fieldset>
+
+            <fieldset style="margin-top: 15px;">
+                <legend>社交媒體 / Social Media</legend>
+                <div class="social-row">
+                    <button class="social-btn" onclick="window.open('https://twitter.com', '_blank')">
+                        <img src="https://win98icons.alexmeub.com/icons/png/message_envelope_open-1.png">
+                        <span>Twitter</span>
+                    </button>
+                    <button class="social-btn" onclick="window.open('https://github.com', '_blank')">
+                        <img src="https://win98icons.alexmeub.com/icons/png/msagent-3.png">
+                        <span>GitHub</span>
+                    </button>
+                    <button class="social-btn" onclick="window.open('https://instagram.com', '_blank')">
+                        <img src="https://win98icons.alexmeub.com/icons/png/camera-0.png">
+                        <span>Instagram</span>
+                    </button>
+                </div>
+            </fieldset>
+
+            <div id="longText" style="margin-top:15px"></div>
+        </div>
+
+        <div class="status-bar">
+            <p class="status-bar-field">组件运行正常</p>
+            <p class="status-bar-field" id="clock" style="width: 80px;">00:00:00</p>
+        </div>
+
+        <div class="resizer resizer-l"></div>
+        <div class="resizer resizer-r"></div>
+        <div class="resizer resizer-b"></div>
+        <div class="resizer resizer-lb"></div>
+        <div class="resizer resizer-rb"></div>
+    </div>
+
+    <div id="custom-menu" class="window">
+        <ul class="menu-list" id="menu-content"></ul>
+    </div>
+
+    <script>
+        const win = document.getElementById('myWindow');
+        const titleBar = document.getElementById('titleBar');
+        const menu = document.getElementById('custom-menu');
+        const menuContent = document.getElementById('menu-content');
+        let lastRect = { top: '50px', left: '50px', w: '600px', h: '450px' };
+
+
+        // 初始化居中
+        function centerWindow() {
+            const x = Math.max(0, (window.innerWidth - 600) / 2);
+            const y = Math.max(0, (window.innerHeight - 450) / 2);
+            win.style.left = x + 'px'; win.style.top = y + 'px';
+            lastRect.left = x + 'px'; lastRect.top = y + 'px';
+            requestAnimationFrame(() => { win.style.opacity = "1"; });
+        }
+        window.onload = centerWindow;
+
+        const hideMenu = () => { menu.style.display = 'none'; };
+
+        function actionMinimize() {
+            win.classList.remove('is-dragging');
+            win.classList.add('minimized');
+            hideMenu();
+        }
+
+        function actionMaximize() {
+            win.classList.remove('is-dragging');
+            if (win.classList.contains('minimized')) {
+                win.classList.remove('minimized');
+                return;
+            }
+            const isMax = win.classList.contains('maximized');
+            if (isMax) {
+                win.classList.remove('maximized');
+                win.style.top = lastRect.top; win.style.left = lastRect.left;
+                win.style.width = lastRect.w; win.style.height = lastRect.h;
+            } else {
+                lastRect = { top: win.style.top, left: win.style.left, w: win.style.width, h: win.style.height };
+                win.classList.add('maximized');
+            }
+            hideMenu();
+        }
+
+        function actionRestore() {
+            if (win.classList.contains('minimized')) {
+                win.classList.remove('minimized');
+            } else if (win.classList.contains('maximized')) {
+                actionMaximize();
+            }
+            hideMenu();
+        }
+
+        // 按钮绑定
+        document.getElementById('btnMin').onclick = (e) => { e.stopPropagation(); actionMinimize(); };
+        document.getElementById('btnMax').onclick = (e) => { e.stopPropagation(); actionMaximize(); };
+        document.getElementById('btnClose').onclick = (e) => { e.stopPropagation(); win.style.display='none'; };
+        titleBar.ondblclick = (e) => { if (!e.target.closest('button')) actionMaximize(); };
+
+        // 右键逻辑
+        window.oncontextmenu = (e) => {
+            e.preventDefault();
+            const isMax = win.classList.contains('maximized');
+            const targetTitle = e.target.closest('.title-bar');
+            const targetBody = e.target.closest('.window-body');
+            const targetWin = e.target.closest('.main-window');
+
+            let items = [];
+            if (targetTitle) {
+                items = [
+                    { text: '还原(R)', action: actionRestore, disabled: !isMax && !win.classList.contains('minimized') },
+                    { text: '最小化(N)', action: actionMinimize },
+                    { text: '最大化(X)', action: actionMaximize, disabled: isMax },
+                    { type: 'divider' },
+                    { text: '关闭(C)', action: () => win.style.display='none' }
+                ];
+            } else if (targetBody) {
+                items = [
+                    { text: '全选(A)', action: () => document.execCommand('selectAll') },
+                    { text: '复制(C)', action: () => {
+                        const s = window.getSelection().toString();
+                        navigator.clipboard.writeText(s || window.location.href);
+                    }},
+                    { type: 'divider' },
+                    { text: '刷新页面(R)', action: () => location.reload() }
+                ];
+            } else if (!targetWin) {
+                items = [
+                    { text: '还原窗口(R)', action: actionRestore },
+                    { text: '刷新页面(E)', action: () => location.reload() }
+                ];
+            } else { return; }
+
+            renderMenu(items, e.clientX, e.clientY);
+        };
+
+        function renderMenu(items, x, y) {
+            menuContent.innerHTML = '';
+            items.forEach(i => {
+                const li = document.createElement('li');
+                if (i.type === 'divider') {
+                    li.className = 'menu-divider';
+                } else {
+                    li.className = 'menu-item';
+                    if (i.disabled) li.classList.add('disabled');
+                    li.innerHTML = `<span>${i.text}</span>`;
+                    if (!i.disabled) {
+                        li.onclick = (ev) => { ev.stopPropagation(); i.action(); hideMenu(); };
+                    }
+                }
+                menuContent.appendChild(li);
+            });
+            menu.style.display = 'block';
+            menu.style.left = x + 'px'; menu.style.top = y + 'px';
+        }
+
+        window.onclick = hideMenu;
+
+        // 拖拽逻辑
+        let mode = null, startX, startY, startW, startH, startL, startT;
+        const handleMouseDown = (e, actionType) => {
+            if (win.classList.contains('maximized')) return;
+            if (actionType === 'drag' && e.target.closest('button')) return;
+            win.classList.add('is-dragging');
+            mode = actionType;
+            startX = e.clientX; startY = e.clientY;
+            startW = win.offsetWidth; startH = win.offsetHeight;
+            startL = win.offsetLeft; startT = win.offsetTop;
+            e.preventDefault();
+        };
+
+        titleBar.onmousedown = (e) => handleMouseDown(e, 'drag');
+        document.querySelectorAll('.resizer').forEach(r => {
+            const type = r.className.split('resizer-')[1];
+            r.onmousedown = (e) => handleMouseDown(e, type);
+        });
+
+        document.onmousemove = (e) => {
+            if (!mode) return;
+            const dx = e.clientX - startX; const dy = e.clientY - startY;
+            if (mode === 'drag') {
+                win.style.left = (startL + dx) + 'px'; win.style.top = (startT + dy) + 'px';
+            } else {
+                let newW = startW, newH = startH, newL = startL;
+                if (mode.includes('r')) newW = Math.max(300, startW + dx);
+                if (mode.includes('b')) newH = Math.max(200, startH + dy);
+                if (mode.includes('l')) {
+                    const tryW = startW - dx;
+                    if (tryW > 300) { newW = tryW; newL = startL + dx; }
+                }
+                win.style.width = newW + 'px'; win.style.height = newH + 'px'; win.style.left = newL + 'px';
+            }
+        };
+
+        document.onmouseup = () => { mode = null; win.classList.remove('is-dragging'); };
+        setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+    </script>
+</body>
+</html>
